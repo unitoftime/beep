@@ -2,22 +2,25 @@
 package speaker
 
 import (
+	"fmt"
+	"math"
 	"sync"
 
 	"github.com/unitoftime/beep"
-	"github.com/hajimehoshi/oto"
+	"github.com/ebitengine/oto/v3"
 	"github.com/pkg/errors"
 )
 
 var (
 	mu      sync.Mutex
 	mixer   beep.Mixer
-	samples [][2]float64
-	buf     []byte
 	context *oto.Context
 	player  *oto.Player
-	done    chan struct{}
 )
+
+const channelCount = 2
+const bitDepthInBytes = 2
+const bytesPerSample = bitDepthInBytes * channelCount
 
 // Init initializes audio playback through speaker. Must be called before using this package.
 //
@@ -28,35 +31,80 @@ func Init(sampleRate beep.SampleRate, bufferSize int) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	Close()
+	// Force it to be a multiple of 2
+	div := int(math.Log2(float64(bufferSize)))
+	bufferSize = int(math.Exp2(float64(div)))
 
-	mixer = beep.Mixer{}
+	// Calculate the buffer time to pass into oto (Note we add +1 to ensure they match our value when they floor)
+	bufferTime := sampleRate.D(bufferSize + 1)
 
-	numBytes := bufferSize * 4
-	samples = make([][2]float64, bufferSize)
-	buf = make([]byte, numBytes)
-
+	op := &oto.NewContextOptions{
+		SampleRate: int(sampleRate),
+		ChannelCount: 2,
+		Format: oto.FormatSignedInt16LE,
+		BufferSize: bufferTime,
+	}
 	var err error
-	context, err = oto.NewContext(int(sampleRate), 2, 2, numBytes)
+	var readyChan chan struct{}
+	context, readyChan, err = oto.NewContext(op)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize speaker")
 	}
-	player = context.NewPlayer()
 
-	done = make(chan struct{})
+	<- readyChan // TODO: Dont block here
 
-	go func() {
-		for {
-			select {
-			default:
-				update()
-			case <-done:
-				return
-			}
-		}
-	}()
+	mixer = beep.Mixer{}
+	mainReader := newReader()
+
+	player = context.NewPlayer(mainReader)
+	player.SetBufferSize(bufferSize * bytesPerSample)
+	player.Play()
 
 	return nil
+}
+
+type reader struct {
+	samples [][2]float64
+}
+func newReader() *reader {
+	return &reader{
+		make([][2]float64, 0),
+	}
+}
+func (r *reader) Read(buf []byte) (n int, err error) {
+	if len(buf) % 4 != 0 {
+		err = fmt.Errorf("invalid read length, must be 4, buf: %d", len(buf))
+		// panic(err)
+		return 0, err
+	}
+
+	numSamples := len(buf) / 4
+	if cap(r.samples) < numSamples {
+		r.samples = make([][2]float64, numSamples)
+	}
+	r.samples = r.samples[:numSamples]
+
+	mu.Lock()
+	mixer.Stream(r.samples)
+	mu.Unlock()
+
+	for i := range r.samples {
+		for c := range r.samples[i] {
+			val := r.samples[i][c]
+			if val < -1 {
+				val = -1
+			}
+			if val > +1 {
+				val = +1
+			}
+			valInt16 := int16(val * (1<<15 - 1))
+			low := byte(valInt16)
+			high := byte(valInt16 >> 8)
+			buf[i*4+c*2+0] = low
+			buf[i*4+c*2+1] = high
+		}
+	}
+	return 4 * numSamples, nil
 }
 
 // Close closes the playback and the driver. In most cases, there is certainly no need to call Close
@@ -65,12 +113,7 @@ func Init(sampleRate beep.SampleRate, bufferSize int) error {
 // device, that you'll probably want to manually manage the device from your application.
 func Close() {
 	if player != nil {
-		if done != nil {
-			done <- struct{}{}
-			done = nil
-		}
 		player.Close()
-		context.Close()
 		player = nil
 	}
 }
@@ -100,31 +143,4 @@ func Clear() {
 	mu.Lock()
 	mixer.Clear()
 	mu.Unlock()
-}
-
-// update pulls new data from the playing Streamers and sends it to the speaker. Blocks until the
-// data is sent and started playing.
-func update() {
-	mu.Lock()
-	mixer.Stream(samples)
-	mu.Unlock()
-
-	for i := range samples {
-		for c := range samples[i] {
-			val := samples[i][c]
-			if val < -1 {
-				val = -1
-			}
-			if val > +1 {
-				val = +1
-			}
-			valInt16 := int16(val * (1<<15 - 1))
-			low := byte(valInt16)
-			high := byte(valInt16 >> 8)
-			buf[i*4+c*2+0] = low
-			buf[i*4+c*2+1] = high
-		}
-	}
-
-	player.Write(buf)
 }

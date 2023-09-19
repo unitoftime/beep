@@ -3,10 +3,16 @@ module github.com/unitoftime/beep
 go 1.14
 
 require (
-	github.com/gdamore/tcell v1.3.0
-	github.com/hajimehoshi/go-mp3 v0.3.0
-	github.com/hajimehoshi/oto v0.7.1
-	github.com/jfreymuth/oggvorbis v1.0.1
-	github.com/mewkiz/flac v1.0.7
+	github.com/ebitengine/oto/v3 v3.0.0
+	github.com/ebitengine/purego v0.6.0-alpha // indirect
+	github.com/gdamore/tcell v1.4.0
+	github.com/hajimehoshi/go-mp3 v0.3.4
+	github.com/jfreymuth/oggvorbis v1.0.5
+	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
+	github.com/mattn/go-runewidth v0.0.15 // indirect
+	github.com/mewkiz/flac v1.0.8
 	github.com/pkg/errors v0.9.1
+	github.com/rivo/uniseg v0.4.4 // indirect
+	golang.org/x/sys v0.12.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 )

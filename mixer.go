@@ -3,6 +3,7 @@ package beep
 // Mixer allows for dynamic mixing of arbitrary number of Streamers. Mixer automatically removes
 // drained Streamers. Mixer's stream never drains, when empty, Mixer streams silence.
 type Mixer struct {
+	tmp [512][2]float64 // Note: Doing this would prevent the ability to have mixers mix themselves. I'm not sure if that would ever be useful though...
 	streamers []Streamer
 }
 
@@ -24,10 +25,10 @@ func (m *Mixer) Clear() {
 // Stream streams all Streamers currently in the Mixer mixed together. This method always returns
 // len(samples), true. If there are no Streamers available, this methods streams silence.
 func (m *Mixer) Stream(samples [][2]float64) (n int, ok bool) {
-	var tmp [512][2]float64
+	// var tmp [512][2]float64
 
 	for len(samples) > 0 {
-		toStream := len(tmp)
+		toStream := len(m.tmp)
 		if toStream > len(samples) {
 			toStream = len(samples)
 		}
@@ -39,10 +40,10 @@ func (m *Mixer) Stream(samples [][2]float64) (n int, ok bool) {
 
 		for si := 0; si < len(m.streamers); si++ {
 			// mix the stream
-			sn, sok := m.streamers[si].Stream(tmp[:toStream])
-			for i := range tmp[:sn] {
-				samples[i][0] += tmp[i][0]
-				samples[i][1] += tmp[i][1]
+			sn, sok := m.streamers[si].Stream(m.tmp[:toStream])
+			for i := range m.tmp[:sn] {
+				samples[i][0] += m.tmp[i][0]
+				samples[i][1] += m.tmp[i][1]
 			}
 			if !sok {
 				// remove drained streamer
