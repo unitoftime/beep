@@ -1,6 +1,6 @@
 package effects
 
-import "github.com/faiface/beep"
+import "github.com/unitoftime/beep"
 
 // Mono converts the wrapped Streamer to a mono buffer
 // by downmixing the left and right channels together.
