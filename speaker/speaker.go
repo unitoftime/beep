@@ -72,13 +72,13 @@ func newReader() *reader {
 	}
 }
 func (r *reader) Read(buf []byte) (n int, err error) {
-	if len(buf) % 4 != 0 {
+	if len(buf) % bytesPerSample != 0 {
 		err = fmt.Errorf("invalid read length, must be 4, buf: %d", len(buf))
 		// panic(err)
 		return 0, err
 	}
 
-	numSamples := len(buf) / 4
+	numSamples := len(buf) / bytesPerSample
 	if cap(r.samples) < numSamples {
 		r.samples = make([][2]float64, numSamples)
 	}
@@ -100,11 +100,11 @@ func (r *reader) Read(buf []byte) (n int, err error) {
 			valInt16 := int16(val * (1<<15 - 1))
 			low := byte(valInt16)
 			high := byte(valInt16 >> 8)
-			buf[i*4+c*2+0] = low
-			buf[i*4+c*2+1] = high
+			buf[i*bytesPerSample + c*bitDepthInBytes + 0] = low
+			buf[i*bytesPerSample + c*bitDepthInBytes + 1] = high
 		}
 	}
-	return 4 * numSamples, nil
+	return bytesPerSample * numSamples, nil
 }
 
 // Close closes the playback and the driver. In most cases, there is certainly no need to call Close
